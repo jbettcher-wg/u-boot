@@ -18,6 +18,7 @@
 #include <fsl_ddr.h>
 #include <init.h>
 #include <log.h>
+#include <malloc.h>
 #include <asm/bitops.h>
 
 /*
@@ -894,20 +895,24 @@ phys_size_t __fsl_ddr_sdram(fsl_ddr_info_t *pinfo)
  */
 phys_size_t fsl_ddr_sdram(void)
 {
-	fsl_ddr_info_t info;
+	fsl_ddr_info_t *info = malloc(sizeof(fsl_ddr_info_t));
+	if (!info) {
+		printf("DDR: Out of memory for info struct! Increase CONFIG_SYS_MALLOC_F_LEN\n");
+		return 0;
+	}
 
 	/* Reset info structure. */
-	memset(&info, 0, sizeof(fsl_ddr_info_t));
-	info.mem_base = CFG_SYS_FSL_DDR_SDRAM_BASE_PHY;
-	info.first_ctrl = 0;
-	info.num_ctrls = CONFIG_SYS_FSL_DDR_MAIN_NUM_CTRLS;
-	info.dimm_slots_per_ctrl = CONFIG_DIMM_SLOTS_PER_CTLR;
-	info.board_need_mem_reset = board_need_mem_reset;
-	info.board_mem_reset = board_assert_mem_reset;
-	info.board_mem_de_reset = board_deassert_mem_reset;
-	remove_unused_controllers(&info);
+	memset(info, 0, sizeof(fsl_ddr_info_t));
+	info->mem_base = CFG_SYS_FSL_DDR_SDRAM_BASE_PHY;
+	info->first_ctrl = 0;
+	info->num_ctrls = CONFIG_SYS_FSL_DDR_MAIN_NUM_CTRLS;
+	info->dimm_slots_per_ctrl = CONFIG_DIMM_SLOTS_PER_CTLR;
+	info->board_need_mem_reset = board_need_mem_reset;
+	info->board_mem_reset = board_assert_mem_reset;
+	info->board_mem_de_reset = board_deassert_mem_reset;
+	remove_unused_controllers(info);
 
-	return __fsl_ddr_sdram(&info);
+	return __fsl_ddr_sdram(info);
 }
 
 #ifdef CONFIG_SYS_FSL_OTHER_DDR_NUM_CTRLS
@@ -919,19 +924,23 @@ phys_size_t fsl_other_ddr_sdram(unsigned long long base,
 				void (*board_reset)(void),
 				void (*board_de_reset)(void))
 {
-	fsl_ddr_info_t info;
+	fsl_ddr_info_t *info = malloc(sizeof(fsl_ddr_info_t));
+	if (!info) {
+		printf("DDR: Out of memory for info struct! Increase CONFIG_SYS_MALLOC_F_LEN\n");
+		return 0;
+	}
 
 	/* Reset info structure. */
-	memset(&info, 0, sizeof(fsl_ddr_info_t));
-	info.mem_base = base;
-	info.first_ctrl = first_ctrl;
-	info.num_ctrls = num_ctrls;
-	info.dimm_slots_per_ctrl = dimm_slots_per_ctrl;
-	info.board_need_mem_reset = board_need_reset;
-	info.board_mem_reset = board_reset;
-	info.board_mem_de_reset = board_de_reset;
+	memset(info, 0, sizeof(fsl_ddr_info_t));
+	info->mem_base = base;
+	info->first_ctrl = first_ctrl;
+	info->num_ctrls = num_ctrls;
+	info->dimm_slots_per_ctrl = dimm_slots_per_ctrl;
+	info->board_need_mem_reset = board_need_reset;
+	info->board_mem_reset = board_reset;
+	info->board_mem_de_reset = board_de_reset;
 
-	return __fsl_ddr_sdram(&info);
+	return __fsl_ddr_sdram(info);
 }
 #endif
 
@@ -942,19 +951,24 @@ phys_size_t fsl_other_ddr_sdram(unsigned long long base,
 phys_size_t
 fsl_ddr_sdram_size(void)
 {
-	fsl_ddr_info_t  info;
+	fsl_ddr_info_t *info = malloc(sizeof(fsl_ddr_info_t));
 	unsigned long long total_memory = 0;
 
-	memset(&info, 0 , sizeof(fsl_ddr_info_t));
-	info.mem_base = CFG_SYS_FSL_DDR_SDRAM_BASE_PHY;
-	info.first_ctrl = 0;
-	info.num_ctrls = CONFIG_SYS_FSL_DDR_MAIN_NUM_CTRLS;
-	info.dimm_slots_per_ctrl = CONFIG_DIMM_SLOTS_PER_CTLR;
-	info.board_need_mem_reset = NULL;
-	remove_unused_controllers(&info);
+	if (!info) {
+		printf("DDR: Out of memory for info struct! Increase CONFIG_SYS_MALLOC_F_LEN\n");
+		return 0;
+	}
+
+	memset(info, 0, sizeof(fsl_ddr_info_t));
+	info->mem_base = CFG_SYS_FSL_DDR_SDRAM_BASE_PHY;
+	info->first_ctrl = 0;
+	info->num_ctrls = CONFIG_SYS_FSL_DDR_MAIN_NUM_CTRLS;
+	info->dimm_slots_per_ctrl = CONFIG_DIMM_SLOTS_PER_CTLR;
+	info->board_need_mem_reset = NULL;
+	remove_unused_controllers(info);
 
 	/* Compute it once normally. */
-	total_memory = fsl_ddr_compute(&info, STEP_GET_SPD, 1);
+	total_memory = fsl_ddr_compute(info, STEP_GET_SPD, 1);
 
 	/* Ensure that total_memory does not overflow on return */
 	if (total_memory > (phys_size_t)~0ULL)

@@ -1,0 +1,174 @@
+// SPDX-License-Identifier: GPL-2.0+ OR X11
+/*
+ * T4240QDS Device Tree Source
+ *
+ * Copyright 2013 - 2015 Freescale Semiconductor Inc.
+ * Copyright 2019-2023 NXP
+ */
+
+/include/ "t4240.dtsi"
+
+/ {
+	model = "fsl,T4240QDS";
+	compatible = "fsl,T4240QDS";
+	#address-cells = <2>;
+	#size-cells = <2>;
+	interrupt-parent = <&mpic>;
+
+	aliases {
+		spi0 = &espi0;
+		serial0 = &serial0;
+		serial1 = &serial1;
+		serial2 = &serial2;
+		serial3 = &serial3;
+		/* Match Linux: bus 0 is the controller at 0x118000 (SPD / PCA9547). */
+		i2c0 = &i2c0;
+		i2c1 = &i2c1;
+		i2c2 = &i2c2;
+		i2c3 = &i2c3;
+	};
+};
+
+/*
+ * SoC .dtsi stubs use clock-frequency = <0>. SPD / mux bring-up is conservative
+ * standard-mode (100 kHz); raise in board DT only if you need faster peripherals.
+ */
+&i2c0 {
+	clock-frequency = <100000>;
+	status = "okay";
+
+	fpga@66 {
+		compatible = "fsl,qixis";
+		reg = <0x66>;
+	};
+
+	mux@77 {
+		compatible = "nxp,pca9547";
+		reg = <0x77>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		i2c@0 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+		};
+
+		i2c@1 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <1>;
+		};
+
+		i2c@2 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <2>;
+		};
+
+		i2c@3 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <3>;
+		};
+	};
+};
+
+/*
+ * U-Boot: bring up only onboard FM1 RGMII (DTSEC5, PHY MDIO addr 2 on EMI1
+ * RGMII mux per board eth.c). Linux enables SerDes / FM2 / 10G and other DTSECs.
+ */
+&soc {
+	fman@400000 {
+		ethernet@e0000 {
+			status = "disabled";
+		};
+
+		ethernet@e2000 {
+			status = "disabled";
+		};
+
+		ethernet@e4000 {
+			status = "disabled";
+		};
+
+		ethernet@e6000 {
+			status = "disabled";
+		};
+
+		ethernet@e8000 {
+			phy-handle = <&onboard_rgmii_phy>;
+			phy-connection-type = "rgmii";
+		};
+
+		ethernet@ea000 {
+			status = "disabled";
+		};
+
+		ethernet@f0000 {
+			status = "disabled";
+		};
+
+		ethernet@f2000 {
+			status = "disabled";
+		};
+	};
+
+	fman@500000 {
+		ethernet@e0000 {
+			status = "disabled";
+		};
+
+		ethernet@e2000 {
+			status = "disabled";
+		};
+
+		ethernet@e4000 {
+			status = "disabled";
+		};
+
+		ethernet@e6000 {
+			status = "disabled";
+		};
+
+		ethernet@e8000 {
+			status = "disabled";
+		};
+
+		ethernet@ea000 {
+			status = "disabled";
+		};
+
+		ethernet@f0000 {
+			status = "disabled";
+		};
+
+		ethernet@f2000 {
+			status = "disabled";
+		};
+
+		mdio@5fc000 {
+			/* Onboard RGMII PHY for FM1@DTSEC5 — MDIO addr 2 (board eth.c) */
+			onboard_rgmii_phy: ethernet-phy@2 {
+				reg = <0x2>;
+			};
+		};
+
+		mdio@5fd000 {
+			status = "disabled";
+		};
+	};
+};
+
+&espi0 {
+	status = "okay";
+	flash@0 {
+		compatible = "jedec,spi-nor";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		reg = <0>;
+		spi-max-frequency = <10000000>; /* input clock */
+	};
+};
+
+/include/ "t4240si-post.dtsi"

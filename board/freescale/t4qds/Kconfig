@@ -1,0 +1,23 @@
+if TARGET_T4240QDS
+
+config SYS_BOARD
+	default "t4qds"
+
+config SYS_VENDOR
+	default "freescale"
+
+config SYS_CONFIG_NAME
+	default "T4240QDS"
+
+config T4240QDS_DDR_DEBUG_INTERACTIVE
+	bool "Freescale DDR interactive path (optional 'd' at ddr init / env hook)"
+	depends on SYS_FSL_DDR
+	select FSL_DDR_INTERACTIVE
+	default n
+	help
+	  Enables CONFIG_FSL_DDR_INTERACTIVE so __fsl_ddr_sdram() can call
+	  fsl_ddr_interactive() when a key is pending and 'd' is pressed, or when
+	  the env-based hook in fsl_ddr_interactive_env_var_exists() triggers.
+	  Laboratory use; not needed for normal boot.
+
+endif

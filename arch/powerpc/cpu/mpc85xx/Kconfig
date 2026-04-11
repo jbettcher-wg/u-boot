@@ -251,6 +251,19 @@ config TARGET_T4240RDB
 	imply CMD_SATA
 	imply PANIC_HANG
 
+config TARGET_T4240QDS
+	bool "Support T4240QDS"
+	select ARCH_T4240
+	select SUPPORT_SPL
+	select PHYS_64BIT
+	select FSL_DDR_FIRST_SLOT_QUAD_CAPABLE
+	select SYS_L3_SIZE_512KB
+	select FSL_QIXIS
+	imply I2C_MUX
+	imply I2C_MUX_PCA954x
+	imply CMD_SATA
+	imply PANIC_HANG
+
 config TARGET_KMP204X
 	bool "Support kmp204x"
 	select VENDOR_KM
@@ -1551,6 +1564,7 @@ source "board/freescale/t104xrdb/Kconfig"
 source "board/freescale/t208xqds/Kconfig"
 source "board/freescale/t208xrdb/Kconfig"
 source "board/freescale/t4rdb/Kconfig"
+source "board/freescale/t4qds/Kconfig"
 source "board/socrates/Kconfig"
 
 endmenu
