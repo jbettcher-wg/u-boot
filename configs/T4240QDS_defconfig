@@ -1,11 +1,12 @@
 # T4240QDS NOR: same Kconfig surface as T4240RDB_defconfig, plus QDS-only
 # items (device tree name, QIXIS dynamic sysclk, six-DIMM SPD layout, DTSEC5).
 # No CONFIG_VID: QDS programs core voltage via QIXIS brdcfg in t4240qds.c (not vid.c).
-# DM I2C SPD: each generic EEPROM bind uses strdup(); PPC default SYS_MALLOC_F_LEN=0x400
-# exhausts L1 malloc before dram_init — raise until it still fits CFG_SYS_INIT_RAM_SIZE.
+# CRITICAL: keep CONFIG_SYS_MALLOC_F_LEN=0x3000 for DDR/I2C SPD training and board boot.
+# Pre-reloc malloc_f must cover SPD (dynamic buffers, DM EEPROM binds e.g. strdup). The
+# Kconfig default 0x400 was too small: the pool overran, corrupted adjacent memory
+# (cache/stack), and crashed before dram_init — raise only as needed but stay within
+# CFG_SYS_INIT_RAM_SIZE.
 # Build: make T4240QDS_defconfig && make olddefconfig && make all -j$(nproc)
-# SPD/I2C/DDR lab trace: use configs/T4240QDS_spdi2c_debug_defconfig (adds
-# CONFIG_DEBUG_FSL_DDR_SPD_I2C and optional CONFIG_T4240QDS_DDR_DEBUG_INTERACTIVE).
 CONFIG_SYS_MALLOC_F_LEN=0x3000
 CONFIG_PPC=y
 CONFIG_TEXT_BASE=0xEFF40000
@@ -130,4 +131,3 @@ CONFIG_USB_MAX_CONTROLLER_COUNT=2
 CONFIG_USB_STORAGE=y
 CONFIG_ADDR_MAP=y
 CONFIG_SYS_NUM_ADDR_MAP=64
-CONFIG_SYS_MALLOC_F_LEN=0x3000
