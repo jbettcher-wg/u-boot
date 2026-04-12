@@ -1,7 +1,34 @@
- # SPDX-License-Identifier: GPL-2.0+
+# SPDX-License-Identifier: GPL-2.0+
 #
 # (C) Copyright 2000 - 2013
 # Wolfgang Denk, DENX Software Engineering, wd@denx.de.
+
+T4240QDS - Board Support:
+=========================
+If you happen to be a rare person like me using a Freescale/NXP
+T4240QDS this repo is for you. The heavy lift has been done to get
+a Driver Model version of u-boot working on the T4240QDS.
+Treat this repo the same as the default, it's a work in progress and
+when code has been cleaned up so it won't break support for other
+boards I will submit to upstream some of it. The biggest battle was
+with DDR SPD training, the QDS compared to the RDB has an additional
+3 memory slots and the newer DM system spilled out of cache grabbing
+the training data, major changes were to utilize malloc in fsl_ddr.c
+to dynamically allocate the training data to get past that hurdle.
+
+What has been tested:
+-Ethernet using DTSEC5 onboard (other PHY's are disabled on Serdes 1 and 2 for now)
+-Serial port, default is 115200 just like board default
+-TFTP/SDHC and EXT2 booting from SATA
+-PCIe devices show link but BAR can't be initialized due to limitations of hardware.
+(Note for above, Linux loads devices and configures things later this is just u-boot)
+
+Why did I do this?
+==================
+To work on support for booting directly from NVME, and to keep modernizing
+support for this board. I'm running latest Linux 7 RC and loading up modern
+hardware is easier when you don't have to worry about not having latest support
+from your bootloader.
 
 Summary:
 ========
