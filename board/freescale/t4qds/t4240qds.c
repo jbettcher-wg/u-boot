@@ -793,6 +793,14 @@ int misc_init_r(void)
 	return 0;
 }
 
+/* /memory for Linux only; U-Boot LMB stays limited by CFG_MAX_MEM_MAPPED. */
+static phys_size_t board_fdt_dram_size(void)
+{
+	if (env_get("bootm_size"))
+		return env_get_bootm_size();
+	return gd->ram_size;
+}
+
 int ft_board_setup(void *blob, struct bd_info *bd)
 {
 	phys_addr_t base;
@@ -801,7 +809,10 @@ int ft_board_setup(void *blob, struct bd_info *bd)
 	ft_cpu_setup(blob, bd);
 
 	base = env_get_bootm_low();
-	size = env_get_bootm_size();
+	size = board_fdt_dram_size();
+
+	printf("FDT /memory for Linux: %#llx @ %#llx\n",
+	       (unsigned long long)size, (unsigned long long)base);
 
 	fdt_fixup_memory(blob, (u64)base, (u64)size);
 
