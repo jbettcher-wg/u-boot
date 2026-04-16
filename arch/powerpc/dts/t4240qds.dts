@@ -75,8 +75,12 @@
 };
 
 /*
- * U-Boot: bring up only onboard FM1 RGMII (DTSEC5, PHY MDIO addr 2 on EMI1
- * RGMII mux per board eth.c). Linux enables SerDes / FM2 / 10G and other DTSECs.
+ * U-Boot: onboard RGMII on FM1@DTSEC5 (PHY MDIO addr 2) and FM2@DTSEC5 (addr 1),
+ * both on the EMI1 RGMII mux (board eth.c / Linux phyrgmii1+2). Other DTSECs stay
+ * disabled so boot stays light; Linux still enables SerDes / slots / 10G as needed.
+ *
+ * All four PCIe controllers stay enabled: only pcie@ffe260000 overrides ranges
+ * (fragment must target /pcie@ffe260000 — in t4240.dtsi PCIe is NOT under soc).
  */
 &soc {
 	fman@400000 {
@@ -132,7 +136,8 @@
 		};
 
 		ethernet@e8000 {
-			status = "disabled";
+			phy-handle = <&onboard_rgmii2_phy>;
+			phy-connection-type = "rgmii";
 		};
 
 		ethernet@ea000 {
@@ -148,7 +153,14 @@
 		};
 
 		mdio@5fc000 {
-			/* Onboard RGMII PHY for FM1@DTSEC5 — MDIO addr 2 (board eth.c) */
+			/*
+			 * FM2 MEMAC MDIO + QIXIS EMI1_RGMII mux: PHY 2 = FM1 DTSEC5,
+			 * PHY 1 = FM2 DTSEC5 (CFG_SYS_FM2_DTSEC_MDIO_ADDR + eth.c).
+			 */
+			onboard_rgmii2_phy: ethernet-phy@1 {
+				reg = <0x1>;
+			};
+
 			onboard_rgmii_phy: ethernet-phy@2 {
 				reg = <0x2>;
 			};
@@ -158,6 +170,16 @@
 			status = "disabled";
 		};
 	};
+};
+
+/*
+ * Same ranges as Linux arch/powerpc/boot/dts/fsl/t4240qds.dts (pci2).
+ * Must use &{/...} — t4240.dtsi places PCIe under /, not under &soc.
+ */
+&{/pcie@ffe260000} {
+	ranges = <0x01000000 0x0 0x00000000 0xf 0xf8020000 0x0 0x00010000
+		  0x02000000 0x0 0xe0000000 0xc 0x80000000 0x0 0x20000000
+		  0x43000000 0x2 0x0 0x0e 0x0 0x2 0x00000000>;
 };
 
 &espi0 {
@@ -170,5 +192,25 @@
 		spi-max-frequency = <10000000>; /* input clock */
 	};
 };
+
+/*
+ * PCIe3 MMIO (above): pcie@ffe260000, LAW target 0x02 per RM.
+ *
+ * Decoder inventory (CPU real / local map, typical QDS + full 48 GiB DRAM @ 0):
+ *   [0, 0xC00000000)     — DDR (six-DIMM / SPD layout; do not place MMIO here)
+ *   [0xC00000000, 0xC80000000) — PCIe1/2/4 keep NXP 512 MiB each (t4240.dtsi).
+ *     PCIe3’s former 512 MiB slot (0xc4..0xc6) is unused with this override.
+ *   [0xC80000000, 0xCA0000000) — PCIe3 non-prefetch MEM, 512 MiB (override)
+ *   [0xE00000000, 0x1000000000) — PCIe3 prefetch MEM, 8 GiB (PCI 0x200000000+)
+ *   0xFE0000000 region     — CCSR (default; relocatable via CCSRBAR)
+ *   0xF_E000_0000 + …      — IFC NOR (T4240QDS.h)
+ *   0xF_FDF0_0000          — QIXIS (IFC CS)
+ *   0xFF4000000 / 0xFF6000000 — BMan / QMan (32 MiB each, if enabled)
+ *
+ * Prefetch CPU base 0xe00000000 matches Linux pci2 so LAW from pcie_fsl.c
+ * covers the same PAs the kernel maps with outbound ATMU.
+ *
+ * U-Boot: drivers/pci/pcie_fsl.c programs LAW + outbound ATMU from "ranges".
+ */
 
 /include/ "t4240si-post.dtsi"

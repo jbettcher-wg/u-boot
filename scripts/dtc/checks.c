@@ -736,7 +736,7 @@ WARNING(reg_format, check_reg_format, NULL, &addr_size_cells);
 static void check_ranges_format(struct check *c, struct dt_info *dti,
 				struct node *node)
 {
-	struct property *prop;
+	struct property *prop, *prop_dt;
 	int c_addr_cells, p_addr_cells, c_size_cells, p_size_cells, entrylen;
 
 	prop = get_property(node, "ranges");
@@ -752,7 +752,29 @@ static void check_ranges_format(struct check *c, struct dt_info *dti,
 	p_size_cells = node_size_cells(node->parent);
 	c_addr_cells = node_addr_cells(node);
 	c_size_cells = node_size_cells(node);
-	entrylen = (p_addr_cells + c_addr_cells + c_size_cells) * sizeof(cell_t);
+	/*
+	 * PCI host "ranges" follow the OF PCI binding: each tuple is 3 cells
+	 * (PCI address) + 2 cells (CPU / parent phys, even when the parent
+	 * node declares #address-cells = <1>) + 2 cells (size).  The generic
+	 * (parent #address-cells + child #address-cells + child #size-cells)
+	 * formula does not match that layout and falsely warns on e.g.
+	 * Freescale QorIQ pcie nodes (runs before pci_bridge sets node->bus).
+	 */
+	prop_dt = get_property(node, "device_type");
+	/*
+	 * device_type may be missing on some merged trees when this check
+	 * runs; PCI host nodes are always named pci@... / pcie@... here.
+	 */
+	if ((prop_dt && streq(prop_dt->val.val, "pci")) ||
+	    strprefixeq(node->name, strlen("pcie"), "pcie") ||
+	    strprefixeq(node->name, strlen("pci"), "pci")) {
+		if (prop->val.len % (7 * sizeof(cell_t)) == 0)
+			entrylen = 7 * sizeof(cell_t);
+		else
+			entrylen = (p_addr_cells + c_addr_cells + c_size_cells) * sizeof(cell_t);
+	} else {
+		entrylen = (p_addr_cells + c_addr_cells + c_size_cells) * sizeof(cell_t);
+	}
 
 	if (prop->val.len == 0) {
 		if (p_addr_cells != c_addr_cells)

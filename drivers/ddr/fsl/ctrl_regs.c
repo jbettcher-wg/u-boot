@@ -2632,8 +2632,13 @@ void erratum_a009942_check_cpo(void)
 		update_cpo = (cpo_min + 0x3f) < cpo_target ? true : false;
 
 	if (update_cpo) {
-		printf("WARN: pls set popts->cpo_sample = 0x%x ", cpo_optimal);
-		printf("in <board>/ddr.c to optimize cpo\n");
+		/*
+		 * Advisory only: board ddr.c may intentionally differ from this
+		 * heuristic (e.g. one step higher CPO). Use log_debug so normal
+		 * boots stay quiet; raise log level / enable DEBUG to see it.
+		 */
+		log_debug("WARN: pls set popts->cpo_sample = 0x%x in <board>/ddr.c to optimize cpo\n",
+			  cpo_optimal);
 	}
 }
 #endif

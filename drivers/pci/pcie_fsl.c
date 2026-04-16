@@ -15,7 +15,10 @@
 #include <asm/fsl_serdes.h>
 #include <asm/global_data.h>
 #include <asm/io.h>
+#include <linux/bitops.h>
 #include <linux/delay.h>
+#include <linux/log2.h>
+#include <errno.h>
 #include <linux/printk.h>
 #include "pcie_fsl.h"
 #include <dm/device_compat.h>
@@ -23,6 +26,94 @@
 LIST_HEAD(fsl_pcie_list);
 
 static int fsl_pcie_link_up(struct fsl_pcie *pcie);
+static int fsl_pcie_setup_outbound_win(struct fsl_pcie *pcie, int idx, int type,
+				       u64 phys, u64 bus_addr, pci_size_t size);
+
+/* RM: PEXOWBAR / PEXOTAR must align to the encoded window size (OWS). */
+static bool fsl_pcie_outbound_one_win_ok(u64 phys, u64 bus, u64 size)
+{
+	if (!size || (size & (size - 1ULL)))
+		return false;
+	if (phys & (size - 1ULL))
+		return false;
+	if (bus & (size - 1ULL))
+		return false;
+	return true;
+}
+
+/*
+ * Tile like Linux setup_one_atmu() when a single POWAR cannot legally cover
+ * phys/bus/size together.
+ */
+static int fsl_pcie_setup_outbound_tile(struct fsl_pcie *pcie, int index,
+					int type, u64 phys, u64 bus, u64 size)
+{
+	u64 pci_addr = bus, phys_addr = phys;
+	unsigned int i = 0;
+
+	while (size > 0) {
+		unsigned int bits = min_t(unsigned int, __ilog2_u64(size),
+					  __ffs64(pci_addr | phys_addr));
+		ccsr_fsl_pci_t *regs = pcie->regs;
+		pot_t *po = &regs->pot[index + i];
+		u32 war, sz;
+
+		if (index + (int)i >= 5)
+			return -1;
+
+		out_be32(&po->powbar, phys_addr >> 12);
+		out_be32(&po->potar, pci_addr >> 12);
+#ifdef CONFIG_SYS_PCI_64BIT
+		out_be32(&po->potear, pci_addr >> 44);
+#else
+		out_be32(&po->potear, 0);
+#endif
+		sz = bits - 1;
+		war = POWAR_EN | sz;
+		if (type == PCI_REGION_IO) {
+			war |= POWAR_IO_READ | POWAR_IO_WRITE;
+		} else {
+			war |= POWAR_MEM_READ | POWAR_MEM_WRITE;
+			if (type == PCI_REGION_PREFETCH)
+				war |= 0x10000000; /* relaxed ordering, match Linux */
+		}
+		out_be32(&po->powar, war);
+
+		pci_addr += 1ULL << bits;
+		phys_addr += 1ULL << bits;
+		size -= 1ULL << bits;
+		i++;
+	}
+
+	return (int)i;
+}
+
+static int fsl_pcie_setup_one_outbound_region(struct fsl_pcie *pcie, int *idx,
+					      int type, u64 phys, u64 bus,
+					      u64 size)
+{
+	int n;
+
+	if (!size)
+		return 0;
+
+	if (fsl_pcie_outbound_one_win_ok(phys, bus, size)) {
+		if (*idx >= 5)
+			return -EINVAL;
+		fsl_pcie_setup_outbound_win(pcie, *idx, type, phys, bus, size);
+		(*idx)++;
+		return 1;
+	}
+
+	n = fsl_pcie_setup_outbound_tile(pcie, *idx, type, phys, bus, size);
+	if (n < 0) {
+		dev_err(pcie->bus,
+			"PCIe outbound tile failed (need more POW slots)\n");
+		return n;
+	}
+	*idx += n;
+	return n;
+}
 
 static int fsl_pcie_addr_valid(struct fsl_pcie *pcie, pci_dev_t bdf)
 {
@@ -238,20 +329,62 @@ static bool fsl_pcie_is_agent(struct fsl_pcie *pcie)
 static int fsl_pcie_setup_law(struct fsl_pcie *pcie)
 {
 	struct pci_region *io, *mem, *pref;
+	int idx, ret = 0;
 
 	pci_get_regions(pcie->bus, &io, &mem, &pref);
 
-	if (mem)
-		set_next_law(mem->phys_start,
-			     law_size_bits(mem->size),
-			     pcie->law_trgt_if);
+	if (mem) {
+		idx = set_next_law(mem->phys_start, law_size_bits(mem->size),
+				   pcie->law_trgt_if);
+		if (idx < 0) {
+			dev_err(pcie->bus,
+				"LAW: no free slot for mem CPU %#llx size %#llx (target %#x)\n",
+				(u64)mem->phys_start, (u64)mem->size,
+				pcie->law_trgt_if);
+			ret = -ENOSPC;
+		} else {
+			dev_info(pcie->bus,
+				 "LAW[%d]: mem CPU %#llx size %#llx -> PCIe target %#x\n",
+				 idx, (u64)mem->phys_start, (u64)mem->size,
+				 pcie->law_trgt_if);
+		}
+	}
 
-	if (io)
-		set_next_law(io->phys_start,
-			     law_size_bits(io->size),
-			     pcie->law_trgt_if);
+	if (pref) {
+		idx = set_next_law(pref->phys_start, law_size_bits(pref->size),
+				   pcie->law_trgt_if);
+		if (idx < 0) {
+			dev_err(pcie->bus,
+				"LAW: no free slot for prefetch CPU %#llx size %#llx (target %#x)\n",
+				(u64)pref->phys_start, (u64)pref->size,
+				pcie->law_trgt_if);
+			ret = -ENOSPC;
+		} else {
+			dev_info(pcie->bus,
+				 "LAW[%d]: prefetch CPU %#llx size %#llx -> PCIe target %#x\n",
+				 idx, (u64)pref->phys_start, (u64)pref->size,
+				 pcie->law_trgt_if);
+		}
+	}
 
-	return 0;
+	if (io) {
+		idx = set_next_law(io->phys_start, law_size_bits(io->size),
+				   pcie->law_trgt_if);
+		if (idx < 0) {
+			dev_err(pcie->bus,
+				"LAW: no free slot for IO CPU %#llx size %#llx (target %#x)\n",
+				(u64)io->phys_start, (u64)io->size,
+				pcie->law_trgt_if);
+			ret = -ENOSPC;
+		} else {
+			dev_info(pcie->bus,
+				 "LAW[%d]: IO CPU %#llx size %#llx -> PCIe target %#x\n",
+				 idx, (u64)io->phys_start, (u64)io->size,
+				 pcie->law_trgt_if);
+		}
+	}
+
+	return ret;
 }
 
 static void fsl_pcie_config_ready(struct fsl_pcie *pcie)
@@ -291,7 +424,11 @@ static int fsl_pcie_setup_outbound_win(struct fsl_pcie *pcie, int idx,
 	if (type == PCI_REGION_IO)
 		war |= POWAR_IO_READ | POWAR_IO_WRITE;
 	else
+		/* Same attributes for non-prefetch and prefetch outbound MEM. */
 		war |= POWAR_MEM_READ | POWAR_MEM_WRITE;
+
+	if (type == PCI_REGION_PREFETCH)
+		war |= 0x10000000; /* relaxed ordering, match Linux fsl_pci */
 
 	out_be32(&po->powar, war);
 
@@ -335,24 +472,40 @@ static int fsl_pcie_setup_outbound_wins(struct fsl_pcie *pcie)
 {
 	struct pci_region *io, *mem, *pref;
 	int idx = 1; /* skip 0 */
+	int ret;
 
 	pci_get_regions(pcie->bus, &io, &mem, &pref);
 
-	if (io)
-		/* ATU : OUTBOUND : IO */
-		fsl_pcie_setup_outbound_win(pcie, idx++,
-					    PCI_REGION_IO,
-					    io->phys_start,
-					    io->bus_start,
-					    io->size);
+	if (io) {
+		ret = fsl_pcie_setup_one_outbound_region(pcie, &idx,
+							 PCI_REGION_IO,
+							 io->phys_start,
+							 io->bus_start,
+							 io->size);
+		if (ret < 0)
+			return ret;
+	}
 
-	if (mem)
-		/* ATU : OUTBOUND : MEM */
-		fsl_pcie_setup_outbound_win(pcie, idx++,
-					    PCI_REGION_MEM,
-					    mem->phys_start,
-					    mem->bus_start,
-					    mem->size);
+	if (mem) {
+		ret = fsl_pcie_setup_one_outbound_region(pcie, &idx,
+							 PCI_REGION_MEM,
+							 mem->phys_start,
+							 mem->bus_start,
+							 mem->size);
+		if (ret < 0)
+			return ret;
+	}
+
+	if (pref) {
+		ret = fsl_pcie_setup_one_outbound_region(pcie, &idx,
+							 PCI_REGION_PREFETCH,
+							 pref->phys_start,
+							 pref->bus_start,
+							 pref->size);
+		if (ret < 0)
+			return ret;
+	}
+
 	return 0;
 }
 
@@ -408,7 +561,11 @@ static int fsl_pcie_setup_inbound_wins(struct fsl_pcie *pcie)
 
 static int fsl_pcie_init_atmu(struct fsl_pcie *pcie)
 {
-	fsl_pcie_setup_outbound_wins(pcie);
+	int ret;
+
+	ret = fsl_pcie_setup_outbound_wins(pcie);
+	if (ret < 0)
+		return ret;
 	fsl_pcie_setup_inbound_wins(pcie);
 
 	return 0;
@@ -432,8 +589,11 @@ static int fsl_pcie_init_port(struct fsl_pcie *pcie)
 	ccsr_fsl_pci_t *regs = pcie->regs;
 	u32 val_32;
 	u16 val_16;
+	int ret;
 
-	fsl_pcie_init_atmu(pcie);
+	ret = fsl_pcie_init_atmu(pcie);
+	if (ret < 0)
+		return ret;
 
 #ifdef CONFIG_FSL_PCIE_DISABLE_ASPM
 	val_32 = 0;
@@ -584,7 +744,8 @@ static int fsl_pcie_probe(struct udevice *dev)
 		return 0;
 	}
 
-	fsl_pcie_setup_law(pcie);
+	if (fsl_pcie_setup_law(pcie))
+		dev_warn(pcie->bus, "PCIe LAW setup incomplete (see errors above)\n");
 
 	pcie->mode = fsl_pcie_is_agent(pcie);
 
