@@ -319,6 +319,7 @@ __secondary_start_page:
 	mfmsr	r13
 	ori	r12,r13,MSR_IS|MSR_DS@l
 	mtspr	SPRN_SRR1,r12
+	ori	r13,r12,1@l
 	rfi
 
 	/*
@@ -406,11 +407,13 @@ __second_half_boot_page:
 	.long 0x00c0403d /* lis     r10,-16384        */ /* MAS1_VALID|MAS1_IPROT */
 	.long 0x800e4a61 /* ori     r10,r10,3712      */ /* MAS1_TSIZE(64M) */
 	.long 0xa69b517d /* mtspr   SPRN_MAS1,r10     */
+	.long 0x05008c61 /* ori     r12,r12,5         */ /* MAS2_M | MAS2_E */
 	.long 0xa69b927d /* mtspr   SPRN_MAS2,r12     */
 	.long 0x15008c61 /* ori     r12,r12,21        */ /* MAS3_SX|MAS3_SW|MAS3_SR */
 	.long 0xa69b937d /* mtspr   SPRN_MAS3,r12     */
 	.long 0xa407007c /* tlbwe                     */
 
+	.long 0x0100a039 /* li      r13,1             */
 	.long 0xa603bb7d /* mtspr   SPRN_SRR1,r13     */
 	.long 0x6400004c /* rfi                       */
 

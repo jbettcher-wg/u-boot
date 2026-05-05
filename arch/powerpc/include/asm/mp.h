@@ -14,9 +14,9 @@ u32 determine_mp_bootpg(unsigned int *pagesize);
 int is_core_disabled(int nr);
 
 #ifdef CONFIG_E6500
-#define thread_to_core(x) (x >> 1)
+#define thread_to_core(x) ((x) >> 1)
 #else
 #define thread_to_core(x) (x)
 #endif
 
-#endif
+#endif /* _ASM_MP_H_ */
