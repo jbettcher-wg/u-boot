@@ -388,12 +388,6 @@ __second_half_boot_page:
 	.long 0x0a008c54 /* rlwinm  r12,r4,0,0,5      */
 
 	.long 0x0c006a80 /* lwz     r3,ENTRY_R3_LOWER(r10)   */
-	.long 0x00008038 /* li      r4,0              */
-	.long 0x0000a038 /* li      r5,0              */
-	.long 0x0000c038 /* li      r6,0              */
-	.long 0x0004e03c /* lis     r7,1024           */ /* 64M */
-	.long 0x00000039 /* li      r8,0              */
-	.long 0x00002039 /* li      r9,0              */
 
 	.long 0x14000a80 /* lwz     r0,ENTRY_PIR(r10)        */
 	.long 0xa6431e7c /* mtspr   SPRN_PIR,r0       */
@@ -402,7 +396,7 @@ __second_half_boot_page:
 
 	.long 0xa60b9f7d /* mtspr   IVPR,r12          */
 
-	.long 0x0010403d /* lis     r10,4096          */ /* MAS0_TLBSEL(1)|MAS0_ESEL(0) */
+	.long 0x0f10403d /* lis     r10,0x100f        */ /* MAS0_TLBSEL(1)|MAS0_ESEL(15) */
 	.long 0xa69b507d /* mtspr   SPRN_MAS0,r10     */
 	.long 0x00c0403d /* lis     r10,-16384        */ /* MAS1_VALID|MAS1_IPROT */
 	.long 0x800e4a61 /* ori     r10,r10,3712      */ /* MAS1_TSIZE(64M) */
@@ -412,6 +406,13 @@ __second_half_boot_page:
 	.long 0x15008c61 /* ori     r12,r12,21        */ /* MAS3_SX|MAS3_SW|MAS3_SR */
 	.long 0xa69b937d /* mtspr   SPRN_MAS3,r12     */
 	.long 0xa407007c /* tlbwe                     */
+
+	.long 0x00008038 /* li      r4,0              */
+	.long 0x0000a038 /* li      r5,0              */
+	.long 0x0000c038 /* li      r6,0              */
+	.long 0x0004e03c /* lis     r7,1024           */ /* 64M */
+	.long 0x00000039 /* li      r8,0              */
+	.long 0x00002039 /* li      r9,0              */
 
 	.long 0x0100a039 /* li      r13,1             */
 	.long 0xa603bb7d /* mtspr   SPRN_SRR1,r13     */
