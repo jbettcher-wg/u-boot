@@ -41,6 +41,15 @@ static ulong get_sp (void);
 extern void ft_fixup_num_cores(void *blob);
 static void set_clocks_in_mhz (struct bd_info *kbd);
 
+/*
+ * Little Endian boot support (bootm_le.S + release.S)
+ * switch_to_le_and_jump: AS=1/MAS2_E trampoline, never returns.
+ * spin_le_compat: flag read by secondary CPUs in release.S.
+ */
+extern void switch_to_le_and_jump(ulong entry,
+		ulong kr3, ulong kr4, ulong kr5,
+		ulong kr6, ulong kr7, ulong kr8, ulong kr9);
+
 #ifndef CFG_SYS_LINUX_LOWMEM_MAX_SIZE
 #define CFG_SYS_LINUX_LOWMEM_MAX_SIZE	(768*1024*1024)
 #endif
@@ -114,6 +123,71 @@ static void boot_jump_linux(struct bootm_headers *images)
 		/* does not return */
 	}
 	return;
+}
+
+/*
+ * boot_jump_linux_le() -- Little Endian duplicate of boot_jump_linux().
+ * Signals secondary CPUs via spin_le_compat, dumps debug info, then
+ * calls the AS=1/MAS2_E assembly trampoline.  Never returns.
+ * Activated when U-Boot env variable boot_le=1.
+ */
+static void boot_jump_linux_le(struct bootm_headers *images)
+{
+#ifdef CONFIG_OF_LIBFDT
+	char *of_flat_tree = images->ft_addr;
+#endif
+	ulong entry = images->ep;
+	ulong ima_size = env_get_bootm_mapsize();
+
+	bootstage_mark(BOOTSTAGE_ID_RUN_OS);
+
+#if defined(CONFIG_SYS_INIT_RAM_LOCK) && !defined(CONFIG_E500)
+	unlock_ram_in_cache();
+#endif
+
+#ifdef CONFIG_MP
+	extern u32 __spin_table_addr;
+	if (__spin_table_addr) {
+		int i;
+		u32 *spin_table = (u32 *)__spin_table_addr;
+		/*
+		 * NUM_BOOT_ENTRY is 16 (64 bytes / 4 bytes per word).
+		 * BOOT_ENTRY_RESV is 4.
+		 */
+		for (i = 1; i < CONFIG_MAX_CPUS; i++) {
+			spin_table[i * 16 + 4] = 1;
+		}
+		flush_cache((ulong)__spin_table_addr, CONFIG_MAX_CPUS * 64);
+
+		printf("Spin table dump:\n");
+		for (i = 0; i < 8; i++) {
+			u32 *entry = spin_table + (i * 16);
+			printf("Index %d (0x%p): ADDR_U=%08x ADDR_L=%08x R3_U=%08x R3_L=%08x RESV=%08x PIR=%08x\n",
+				i, entry, entry[0], entry[1], entry[2], entry[3], entry[4], entry[5]);
+		}
+	}
+#endif
+
+	printf("LE boot: entry=0x%08lx fdt=0x%08lx ima=0x%lx\n",
+	       entry,
+	       (ulong)(of_flat_tree ? of_flat_tree : 0),
+	       ima_size);
+	printf("LE boot: spin_le_compat set, AS=1/MAS2_E trampoline ready\n");
+
+#ifdef CONFIG_OF_LIBFDT
+	if (of_flat_tree) {
+		debug("   LE: Booting using OF flat tree...\n");
+		schedule();
+		/* Flush pending UART output before rfi */
+		serial_putc('\n');
+		switch_to_le_and_jump(entry,
+			(ulong)of_flat_tree, 0, 0,
+			EPAPR_MAGIC, ima_size, 0, 0);
+		/* does not return */
+	}
+#endif
+	/* Fallback: should not reach here with FDT boot */
+	printf("LE boot ERROR: no FDT, cannot proceed\n");
 }
 
 void arch_lmb_reserve(struct lmb *lmb)
@@ -247,7 +321,12 @@ int do_bootm_linux(int flag, struct bootm_info *bmi)
 	ret = boot_body_linux(images);
 	if (ret)
 		return ret;
-	boot_jump_linux(images);
+
+	/* Use Little Endian path if boot_le=1 is set in environment */
+	if (env_get_yesno("boot_le") == 1)
+		boot_jump_linux_le(images);
+	else
+		boot_jump_linux(images);
 
 	return 0;
 }
