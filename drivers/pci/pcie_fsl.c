@@ -410,12 +410,14 @@ static int fsl_pcie_setup_outbound_win(struct fsl_pcie *pcie, int idx,
 	if (idx < 0)
 		return -EINVAL;
 
-	out_be32(&po->powbar, phys >> 12);
-	out_be32(&po->potar, bus_addr >> 12);
+	out_be32(&po->powbar, (u32)((u64)phys >> 12));
+	out_be32(&po->potar, (u32)((u64)bus_addr >> 12));
 #ifdef CONFIG_SYS_PCI_64BIT
-	out_be32(&po->potear, bus_addr >> 44);
+	out_be32(&po->potear, (u32)((u64)bus_addr >> 44));
+	out_be32(&po->powbear, (u32)((u64)phys >> 44));
 #else
 	out_be32(&po->potear, 0);
+	out_be32(&po->powbear, 0);
 #endif
 
 	sz = (__ilog2_u64((u64)size) - 1);

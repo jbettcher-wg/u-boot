@@ -40,7 +40,7 @@ typedef struct pci_outbound_window {
 	u32	potar;		/* 0x00 - Address */
 	u32	potear;		/* 0x04 - Address Extended */
 	u32	powbar;		/* 0x08 - Window Base Address */
-	u32	res1;
+	u32	powbear;	/* 0x0c - Window Base Extended Address */
 	u32	powar;		/* 0x10 - Window Attributes */
 #define POWAR_EN	0x80000000
 #define POWAR_IO_READ	0x00080000
